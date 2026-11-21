@@ -1,0 +1,280 @@
+{% extends 'dashboard/layout.html' %}
+
+{% block title %}
+  Fishing Sessions
+{% endblock %}
+
+{% block page_title %}
+  Fishing Sessions
+{% endblock %}
+
+{% block content %}
+  {% if active_sessions %}
+    <div class="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-sm font-semibold text-emerald-700">{{ active_sessions|length }} Active Session(s)</span>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {% for s in active_sessions %}
+          <div class="bg-white border border-emerald-200 rounded-lg p-3 flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="font-semibold text-slate-800 text-sm truncate">{{ s.Name }}</div>
+              <div class="text-xs text-slate-500 font-mono truncate">{{ s.DeviceID }}</div>
+              <div class="text-xs text-slate-400 mt-0.5">Started {{ s.StartedAt|elapsed }}</div>
+            </div>
+            <div class="flex flex-col gap-1 flex-shrink-0">
+              <a href="/admin/sessions/{{ s.ID }}" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded font-medium transition-colors">View</a>
+              <button onclick="openEndModal('{{ s.ID }}', '{{ s.Name }}')" class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded font-medium transition-colors border border-red-200">End</button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="card mb-6">
+    <h3 class="section-title mb-4">Start New Session</h3>
+    <form id="start-session-form" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Device</label>
+        <select id="s-device" required class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">Select device…</option>
+          {% for d in devices %}
+            <option value="{{ d.DeviceID }}">{{ d.Name }} ({{ d.DeviceID }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-600 mb-1">Session Name</label>
+        <input id="s-name" type="text" placeholder="e.g. Monday Afternoon" required class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      </div>
+      <div class="flex items-end">
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"><i class="fas fa-play mr-1"></i> Start Session</button>
+      </div>
+    </form>
+    <div id="start-error" class="hidden mt-2 text-sm text-red-600"></div>
+  </div>
+
+  <div class="card">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="section-title">All Sessions</h3>
+      <span class="text-xs text-slate-400">{{ total }} total</span>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Device</th>
+            <th>Status</th>
+            <th>Started</th>
+            <th>Ended</th>
+            <th>Fish Caught</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in sessions %}
+            <tr>
+              <td class="font-medium text-slate-800">{{ s.Name }}</td>
+              <td class="font-mono text-xs text-slate-500">{{ s.DeviceID }}</td>
+              <td>
+                {% if s.Status == 'active' %}
+                  <span class="badge badge-success flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>Active</span>
+                {% else %}
+                  <span class="badge badge-neutral">Ended</span>
+                {% endif %}
+              </td>
+              <td class="text-xs text-slate-500">{{ s.StartedAt|elapsed }}</td>
+              <td class="text-xs text-slate-500">
+                {% if s.EndedAt %}
+                  {{ s.EndedAt|elapsed }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td class="font-semibold text-slate-700">{{ s.TotalFish }}</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <a href="/admin/sessions/{{ s.ID }}" class="text-xs text-blue-600 hover:text-blue-800 font-medium"><i class="fas fa-chart-bar"></i> Analysis</a>
+                  {% if s.Status == 'active' %}
+                    <button onclick="openEndModal('{{ s.ID }}', '{{ s.Name }}')" class="text-xs text-red-600 hover:text-red-800 font-medium"><i class="fas fa-stop"></i> End</button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          {% if not sessions %}
+            <tr>
+              <td colspan="7" class="text-center text-slate-400 py-6">No sessions yet. Start your first session above.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if total > 20 %}
+      <div class="flex items-center justify-between mt-4 pt-4 border-t border-slate-100">
+        <span class="text-xs text-slate-400">Page {{ page }}</span>
+        <div class="flex gap-2">
+          {% if page > 1 %}
+            <a href="?page={{ page - 1 }}" class="text-xs text-blue-600 hover:text-blue-800 font-medium">← Prev</a>
+          {% endif %}
+          <a href="?page={{ page + 1 }}" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Next →</a>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div id="end-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+      <h3 class="text-base font-bold text-slate-800 mb-1">End Session</h3>
+      <p id="end-modal-name" class="text-sm text-slate-500 mb-4"></p>
+
+      <div class="mb-4">
+        <label class="block text-xs font-medium text-slate-600 mb-2">Fish Caught</label>
+        <div id="catch-entries">
+          <div class="catch-row flex gap-2 mb-2">
+            <input type="text" placeholder="Fish type (e.g. Tilapia)" class="catch-type flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input type="number" min="0" placeholder="Count" class="catch-count w-20 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onclick="removeCatchRow(this)" class="text-slate-400 hover:text-red-500 px-1"><i class="fas fa-times"></i></button>
+          </div>
+        </div>
+        <button onclick="addCatchRow()" class="text-xs text-blue-600 hover:text-blue-800 font-medium mt-1"><i class="fas fa-plus mr-1"></i>Add another fish type</button>
+      </div>
+
+      <div id="end-error" class="hidden mb-3 text-sm text-red-600"></div>
+
+      <div class="flex gap-3 justify-end">
+        <button onclick="closeEndModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
+        <button onclick="submitEndSession()" id="end-btn" class="px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors">End Session</button>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    let endingSessionID = null
+    
+    function openEndModal(id, name) {
+      endingSessionID = id
+      document.getElementById('end-modal-name').textContent = name
+      document.getElementById('end-error').classList.add('hidden')
+      document.getElementById('end-modal').classList.remove('hidden')
+      document.getElementById('end-modal').classList.add('flex')
+    }
+    
+    function closeEndModal() {
+      endingSessionID = null
+      document.getElementById('end-modal').classList.add('hidden')
+      document.getElementById('end-modal').classList.remove('flex')
+      const container = document.getElementById('catch-entries')
+      container.innerHTML = `
+        <div class="catch-row flex gap-2 mb-2">
+          <input type="text" placeholder="Fish type (e.g. Tilapia)"
+            class="catch-type flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <input type="number" min="0" placeholder="Count"
+            class="catch-count w-20 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <button onclick="removeCatchRow(this)" class="text-slate-400 hover:text-red-500 px-1">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>`
+    }
+    
+    function addCatchRow() {
+      const container = document.getElementById('catch-entries')
+      const row = document.createElement('div')
+      row.className = 'catch-row flex gap-2 mb-2'
+      row.innerHTML = `
+        <input type="text" placeholder="Fish type (e.g. Catfish)"
+          class="catch-type flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <input type="number" min="0" placeholder="Count"
+          class="catch-count w-20 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button onclick="removeCatchRow(this)" class="text-slate-400 hover:text-red-500 px-1">
+          <i class="fas fa-times"></i>
+        </button>`
+      container.appendChild(row)
+    }
+    
+    function removeCatchRow(btn) {
+      const rows = document.querySelectorAll('.catch-row')
+      if (rows.length > 1) btn.closest('.catch-row').remove()
+    }
+    
+    async function submitEndSession() {
+      const btn = document.getElementById('end-btn')
+      const errEl = document.getElementById('end-error')
+      errEl.classList.add('hidden')
+    
+      const catches = []
+      document.querySelectorAll('.catch-row').forEach((row) => {
+        const type = row.querySelector('.catch-type').value.trim()
+        const count = parseInt(row.querySelector('.catch-count').value || '0', 10)
+        if (type && count > 0) catches.push({ fish_type: type, count })
+      })
+    
+      btn.textContent = 'Ending…'
+      btn.disabled = true
+    
+      try {
+        const resp = await fetch(`/api/v1/sessions/${endingSessionID}/end`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ catches })
+        })
+        if (!resp.ok) {
+          const data = await resp.json()
+          errEl.textContent = data.error || 'Failed to end session'
+          errEl.classList.remove('hidden')
+          btn.textContent = 'End Session'
+          btn.disabled = false
+          return
+        }
+        window.location.reload()
+      } catch (e) {
+        errEl.textContent = 'Network error'
+        errEl.classList.remove('hidden')
+        btn.textContent = 'End Session'
+        btn.disabled = false
+      }
+    }
+    
+    document.getElementById('start-session-form').addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const errEl = document.getElementById('start-error')
+      errEl.classList.add('hidden')
+    
+      const deviceID = document.getElementById('s-device').value
+      const name = document.getElementById('s-name').value.trim()
+      if (!deviceID || !name) return
+    
+      const btn = e.target.querySelector('button[type=submit]')
+      btn.textContent = 'Starting…'
+      btn.disabled = true
+    
+      try {
+        const resp = await fetch('/api/v1/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_id: deviceID, name })
+        })
+        const data = await resp.json()
+        if (!resp.ok) {
+          errEl.textContent = data.error || 'Failed to start session'
+          errEl.classList.remove('hidden')
+          btn.textContent = 'Start Session'
+          btn.disabled = false
+          return
+        }
+        window.location.reload()
+      } catch (e) {
+        errEl.textContent = 'Network error'
+        errEl.classList.remove('hidden')
+        btn.textContent = 'Start Session'
+        btn.disabled = false
+      }
+    })
+  </script>
+{% endblock %}

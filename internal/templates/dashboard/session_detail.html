@@ -1,0 +1,796 @@
+{% extends 'dashboard/layout.html' %}
+
+{% block title %}
+  {{ session.Name }}
+{% endblock %}
+{% block page_title %}
+  {{ session.Name }}
+{% endblock %}
+
+{% block head %}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <script src="https://code.highcharts.com/modules/exporting.js"></script>
+  <script src="https://code.highcharts.com/modules/export-data.js"></script>
+  <style>
+    #session-map {
+      height: 320px;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .s-tab {
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      background: transparent;
+      color: #64748b;
+      transition: color 0.15s;
+    }
+    .s-tab:hover {
+      color: #334155;
+    }
+    .s-tab.active {
+      color: #2563eb;
+      border-bottom-color: #2563eb;
+      background: #eff6ff;
+    }
+    .s-panel {
+      display: none;
+      max-width: 100%;
+    }
+    .s-panel.active {
+      display: block;
+    }
+    .hc-box {
+      height: 360px;
+      width: 100%;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .hc-box .highcharts-container,
+    .hc-box svg.highcharts-root {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    .photo-scroll {
+      max-height: 420px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 4px;
+    }
+    .photo-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .photo-scroll::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="card mb-6">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="min-w-0">
+        <div class="flex items-center gap-3 mb-1 flex-wrap">
+          <h2 class="text-xl font-bold text-slate-800 truncate">{{ session.Name }}</h2>
+          {% if session.Status == 'active' %}
+            <span class="badge badge-success flex items-center gap-1 flex-shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>Active</span>
+          {% else %}
+            <span class="badge badge-neutral flex-shrink-0">Ended</span>
+          {% endif %}
+        </div>
+        <div class="font-mono text-sm text-slate-500 mb-2">{{ session.DeviceID }}</div>
+        <div class="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
+          <span><i class="fas fa-play mr-1 text-emerald-500"></i>Started {{ session.StartedAt|elapsed }}</span>
+          {% if session.EndedAt %}
+            <span><i class="fas fa-stop mr-1 text-red-400"></i>Ended {{ session.EndedAt|elapsed }}</span>
+          {% endif %}
+          <span><i class="fas fa-clock mr-1 text-blue-400"></i>{{ duration }}</span>
+        </div>
+      </div>
+      <div class="flex gap-2 flex-shrink-0">
+        <a href="/admin/sessions" class="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 border border-slate-200 rounded-lg font-medium transition-colors"><i class="fas fa-arrow-left mr-1"></i>Back</a>
+        {% if session.Status == 'active' %}
+          <button onclick="openEndModal()" class="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors"><i class="fas fa-stop mr-1"></i>End Session</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-3 gap-4 mb-6">
+    <div class="card text-center py-4">
+      <div class="text-3xl font-bold text-slate-800 font-mono" id="stat-total">—</div>
+      <div class="text-xs text-slate-500 mt-1 uppercase tracking-wide">Readings</div>
+    </div>
+    <div class="card text-center py-4">
+      <div class="text-3xl font-bold text-blue-600 font-mono" id="stat-avg-depth">—</div>
+      <div class="text-xs text-slate-500 mt-1 uppercase tracking-wide">Avg Depth (m)</div>
+    </div>
+    <div class="card text-center py-4">
+      <div class="text-3xl font-bold text-slate-700 font-mono">{{ photosReadings|length }}</div>
+      <div class="text-xs text-slate-500 mt-1 uppercase tracking-wide">Photos</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="card">
+      <h3 class="section-title mb-4">Catch Log</h3>
+      {% if catches %}
+        <div class="divide-y divide-slate-100">
+          {% for c in catches %}
+            <div class="flex items-center justify-between py-2.5">
+              <div class="flex items-center gap-2">
+                <i class="fas fa-fish text-blue-400 text-xs"></i>
+                <span class="text-sm font-medium text-slate-700">{{ c.FishType }}</span>
+              </div>
+              <span class="text-sm font-bold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded-full">{{ c.Count }}</span>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="mt-3 pt-3 border-t border-slate-100 flex justify-between items-center">
+          <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Total</span>
+          <span class="font-bold text-slate-800 text-lg">{{ session.TotalFish }}</span>
+        </div>
+      {% else %}
+        <div class="text-center py-10 text-slate-400">
+          <i class="fas fa-fish text-3xl mb-3 block text-slate-300"></i>
+          {% if session.Status == 'active' %}
+            No catch recorded yet
+          {% else %}
+            No catch recorded
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3 class="section-title mb-4">Session Photos</h3>
+      {% if photosReadings %}
+        <div class="photo-scroll grid grid-cols-2 md:grid-cols-3 gap-3">
+          {% for reading in photosReadings %}
+            <div class="group relative overflow-hidden rounded-lg bg-slate-100 cursor-pointer hover:shadow-md transition-shadow" onclick="openPhotoModal('/admin/photos/{{ reading.ID }}', '{{ reading.RecordedAt }}')">
+              <div class="aspect-square relative overflow-hidden">
+                <img src="/admin/photos/{{ reading.ID }}" alt="Photo" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 200%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2216%22 fill=%22%2394a3b8%22%3ENo image%3C/text%3E%3C/svg%3E'" />
+                <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <i class="fas fa-expand text-white text-lg"></i>
+                </div>
+                {% if reading.HasCNN %}
+                  <span class="absolute top-1.5 left-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold {% if reading.IsFish %}
+                      bg-emerald-600 text-white
+                    {% else %}
+                      bg-slate-700/80 text-slate-100
+                    {% endif %}">
+                    <i class="fas fa-{% if reading.IsFish %}
+                        fish
+                      {% else %}
+                        ban
+                      {% endif %}">
+
+                    </i>{{ reading.FishLabel }}{% if reading.Confidence %}
+                      · {{ reading.Confidence }}
+                    {% endif %}
+                  </span>
+                {% endif %}
+              </div>
+              <div class="px-2 py-1.5 bg-white border-t border-slate-100">
+                {% if reading.HasCNN %}
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-[11px] font-semibold {% if reading.IsFish %}
+                        text-emerald-700
+                      {% else %}
+                        text-slate-500
+                      {% endif %} truncate">
+                      {% if reading.Species %}
+                        {{ reading.Species }}{% if reading.SpeciesConfidence %}
+                          ({{ reading.SpeciesConfidence }})
+                        {% endif %}
+                      {% elif reading.Scene %}
+                        {{ reading.Scene }}
+                      {% else %}
+                        {{ reading.FishLabel }}
+                      {% endif %}
+                    </span>
+                  </div>
+                {% else %}
+                  <div class="text-[11px] text-slate-400 italic">CNN pending</div>
+                {% endif %}
+                <div class="text-[10px] text-slate-400 font-mono mt-0.5">{{ reading.RecordedAt|date:'15:04:05' }}</div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="text-center py-10 text-slate-400">
+          <i class="fas fa-image text-3xl mb-3 block text-slate-300"></i>
+          No photos captured
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div id="photo-modal" class="fixed inset-0 z-50 hidden bg-black/80 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-2xl max-w-2xl w-full">
+      <div class="flex items-center justify-between p-4 border-b border-slate-200">
+        <h3 class="text-lg font-bold text-slate-800">Session Photo</h3>
+        <button onclick="closePhotoModal()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times text-xl"></i></button>
+      </div>
+      <div class="p-4 max-h-96 overflow-auto">
+        <img id="modal-photo" src="" alt="Photo" class="w-full rounded" />
+      </div>
+      <div class="px-4 pb-4">
+        <p id="modal-photo-time" class="text-sm text-slate-500"></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function openPhotoModal(src, time) {
+      var modal = document.getElementById('photo-modal')
+      var photo = document.getElementById('modal-photo')
+      var timeEl = document.getElementById('modal-photo-time')
+    
+      photo.src = src
+      timeEl.textContent = 'Captured at: ' + new Date(time).toLocaleString()
+    
+      modal.classList.remove('hidden')
+      modal.classList.add('flex')
+    }
+    
+    function closePhotoModal() {
+      var modal = document.getElementById('photo-modal')
+      modal.classList.add('hidden')
+      modal.classList.remove('flex')
+    }
+    
+    window.openPhotoModal = openPhotoModal
+    window.closePhotoModal = closePhotoModal
+  </script>
+
+  <div class="card mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="section-title">Session Map</h3>
+      <div class="flex gap-3 text-xs text-slate-500">
+        <span class="flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span>High conf.</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-full bg-yellow-400"></span>Low conf.</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-300"></span>No detect</span>
+      </div>
+    </div>
+    <div id="session-map"></div>
+    <div id="map-status" class="text-xs text-slate-400 mt-2 text-center"></div>
+  </div>
+
+  <div class="card mb-6 w-full min-w-0 overflow-hidden">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="section-title">Analysis</h3>
+      <div id="chart-status" class="text-xs text-slate-400">Loading readings…</div>
+    </div>
+
+    <div class="flex border-b border-slate-200 overflow-x-auto mb-4">
+      <button class="s-tab active" data-tab="depth"><i class="fas fa-water mr-1"></i>Depth</button>
+      <button class="s-tab" data-tab="confidence"><i class="fas fa-percentage mr-1"></i>Confidence</button>
+      <button class="s-tab" data-tab="imu"><i class="fas fa-compass mr-1"></i>IMU / Tilt</button>
+      <button class="s-tab" data-tab="summary"><i class="fas fa-chart-bar mr-1"></i>Summary</button>
+    </div>
+
+    <div class="s-panel active" id="panel-depth">
+      <div id="chart-depth" class="hc-box"></div>
+    </div>
+    <div class="s-panel" id="panel-confidence">
+      <div id="chart-confidence" class="hc-box"></div>
+    </div>
+    <div class="s-panel" id="panel-imu">
+      <div id="chart-imu" class="hc-box"></div>
+    </div>
+    <div class="s-panel" id="panel-summary">
+      <div id="chart-summary" class="hc-box"></div>
+    </div>
+  </div>
+
+  {% if session.Status == 'active' %}
+    <div id="end-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+        <h3 class="text-base font-bold text-slate-800 mb-1">End Session</h3>
+        <p class="text-sm text-slate-500 mb-4">{{ session.Name }}</p>
+
+        <div class="mb-4">
+          <label class="block text-xs font-medium text-slate-600 mb-2">Fish Caught</label>
+          <div id="catch-entries">
+            <div class="catch-row flex gap-2 mb-2">
+              <input type="text" placeholder="Fish type (e.g. Tilapia)" class="catch-type flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="number" min="0" placeholder="Count" class="catch-count w-20 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <button onclick="removeCatchRow(this)" class="text-slate-400 hover:text-red-500 px-1"><i class="fas fa-times"></i></button>
+            </div>
+          </div>
+          <button onclick="addCatchRow()" class="text-xs text-blue-600 hover:text-blue-800 font-medium mt-1"><i class="fas fa-plus mr-1"></i>Add fish type</button>
+        </div>
+
+        <div id="end-error" class="hidden mb-3 text-sm text-red-600"></div>
+        <div class="flex gap-3 justify-end">
+          <button onclick="closeEndModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
+          <button onclick="submitEndSession()" id="end-btn" class="px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors">End Session</button>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    var SESSION_ID = '{{ session.ID }}'
+    var SESSION_STATUS = '{{ session.Status }}'
+  </script>
+  <script>
+    ;(function () {
+      'use strict'
+    
+      Highcharts.setOptions({
+        chart: { style: { fontFamily: 'Inter, system-ui, sans-serif' }, animation: false },
+        credits: { enabled: false },
+        title: { text: null },
+        legend: { itemStyle: { fontSize: '11px', fontWeight: '500', color: '#475569' } },
+        xAxis: {
+          type: 'datetime',
+          labels: { style: { fontSize: '10px', color: '#64748b' } },
+          lineColor: '#e2e8f0',
+          tickColor: '#e2e8f0'
+        },
+        yAxis: {
+          labels: { style: { fontSize: '10px', color: '#64748b' } },
+          gridLineColor: '#f1f5f9'
+        },
+        tooltip: { style: { fontSize: '12px' } },
+        plotOptions: { series: { animation: false } },
+        exporting: {
+          buttons: {
+            contextButton: {
+              menuItems: ['viewFullscreen', 'separator', 'downloadPNG', 'downloadSVG', 'downloadCSV', 'downloadXLS']
+            }
+          }
+        }
+      })
+    
+      var charts = {}
+      var chartBuilders = {}
+    
+      function showChart(id) {
+        if (!charts[id] && chartBuilders[id]) {
+          charts[id] = chartBuilders[id]()
+        }
+        if (charts[id])
+          requestAnimationFrame(function () {
+            charts[id].reflow()
+          })
+      }
+    
+      document.querySelectorAll('.s-tab').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          document.querySelectorAll('.s-tab').forEach(function (b) {
+            b.classList.remove('active')
+          })
+          document.querySelectorAll('.s-panel').forEach(function (p) {
+            p.classList.remove('active')
+          })
+          btn.classList.add('active')
+          var id = btn.getAttribute('data-tab')
+          document.getElementById('panel-' + id).classList.add('active')
+          showChart(id)
+        })
+      })
+    
+      var resizeTimer
+      window.addEventListener('resize', function () {
+        clearTimeout(resizeTimer)
+        resizeTimer = setTimeout(function () {
+          var active = document.querySelector('.s-tab.active')
+          var id = active && active.getAttribute('data-tab')
+          if (id && charts[id]) charts[id].reflow()
+        }, 150)
+      })
+    
+      var resizeTimer
+      window.addEventListener('resize', function () {
+        clearTimeout(resizeTimer)
+        resizeTimer = setTimeout(function () {
+          var active = document.querySelector('.s-tab.active')
+          var id = active && active.getAttribute('data-tab')
+          if (id && charts[id]) charts[id].reflow()
+        }, 150)
+      })
+    
+      function cross(O, A, B) {
+        return (A[0] - O[0]) * (B[1] - O[1]) - (A[1] - O[1]) * (B[0] - O[0])
+      }
+      function convexHull(points) {
+        if (points.length < 3) return points
+        var pts = points.slice().sort(function (a, b) {
+          return a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]
+        })
+        var n = pts.length
+        var hull = []
+        for (var i = 0; i < n; i++) {
+          while (hull.length >= 2 && cross(hull[hull.length - 2], hull[hull.length - 1], pts[i]) <= 0) hull.pop()
+          hull.push(pts[i])
+        }
+        var lo = hull.length + 1
+        for (var i = n - 2; i >= 0; i--) {
+          while (hull.length >= lo && cross(hull[hull.length - 2], hull[hull.length - 1], pts[i]) <= 0) hull.pop()
+          hull.push(pts[i])
+        }
+        hull.pop()
+        return hull
+      }
+    
+      function initSessionMap(readings) {
+        var valid = readings.filter(function (r) {
+          return r.Latitude && r.Longitude && !(Math.abs(r.Latitude) < 0.001 && Math.abs(r.Longitude) < 0.001)
+        })
+    
+        var mapEl = document.getElementById('session-map')
+        var statusEl = document.getElementById('map-status')
+    
+        if (valid.length === 0) {
+          mapEl.innerHTML = '<div style="height:320px;display:flex;align-items:center;justify-content:center;' + 'color:#94a3b8;font-size:14px"><i class="fas fa-map-marker-alt" style="margin-right:8px"></i>No GPS data</div>'
+          return
+        }
+    
+        var avgLat =
+          valid.reduce(function (s, r) {
+            return s + r.Latitude
+          }, 0) / valid.length
+        var avgLon =
+          valid.reduce(function (s, r) {
+            return s + r.Longitude
+          }, 0) / valid.length
+    
+        var smap = L.map('session-map').setView([avgLat, avgLon], 14)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          attribution: '&copy; OSM &copy; CARTO',
+          subdomains: 'abcd',
+          maxZoom: 19
+        }).addTo(smap)
+    
+        var pts = valid.map(function (r) {
+          return [r.Latitude, r.Longitude]
+        })
+        var hull = convexHull(pts)
+        if (hull.length >= 3) {
+          L.polygon(hull, {
+            color: '#3b82f6',
+            fillColor: '#3b82f6',
+            fillOpacity: 0.07,
+            weight: 2,
+            dashArray: '8 5'
+          })
+            .bindTooltip('Fishing area')
+            .addTo(smap)
+        }
+    
+        valid.forEach(function (r) {
+          var c = r.DetectionConfidence || 0
+          var color, radius, opacity
+          if (r.FishDetected) {
+            opacity = 0.85
+            if (c >= 0.7) {
+              color = '#ef4444'
+              radius = 10
+            } else if (c >= 0.4) {
+              color = '#f97316'
+              radius = 8
+            } else {
+              color = '#eab308'
+              radius = 6
+            }
+          } else {
+            color = '#94a3b8'
+            radius = 4
+            opacity = 0.5
+          }
+    
+          var ts = r.RecordedAt ? new Date(r.RecordedAt).toLocaleTimeString() : ''
+          L.circleMarker([r.Latitude, r.Longitude], {
+            radius: radius,
+            fillColor: color,
+            color: '#fff',
+            weight: 1,
+            fillOpacity: opacity
+          })
+            .bindPopup('<div style="font-size:12px;min-width:150px">' + '<b style="color:' + (r.FishDetected ? '#ef4444' : '#475569') + '">' + (r.FishDetected ? '&#x1F41F; Fish Detected' : 'No Detection') + '</b>' + '<hr style="margin:5px 0;border-color:#e2e8f0">' + '<table style="width:100%;border-collapse:collapse">' + '<tr><td style="color:#64748b">Confidence</td><td style="text-align:right;font-weight:600">' + (c * 100).toFixed(1) + '%</td></tr>' + '<tr><td style="color:#64748b">Depth</td><td style="text-align:right">' + (r.WaterDepthM || 0).toFixed(2) + ' m</td></tr>' + '<tr><td style="color:#64748b">Tilt</td><td style="text-align:right">' + (r.TiltAngle || 0).toFixed(1) + '&deg;</td></tr>' + (ts ? '<tr><td style="color:#64748b">Time</td><td style="text-align:right">' + ts + '</td></tr>' : '') + '</table></div>')
+            .addTo(smap)
+        })
+    
+        smap.fitBounds(L.latLngBounds(pts), { padding: [20, 20] })
+        if (statusEl) statusEl.textContent = valid.length + ' readings with GPS'
+      }
+    
+      function initCharts(readings) {
+        var times = readings.map(function (r) {
+          return new Date(r.RecordedAt).getTime()
+        })
+    
+        chartBuilders['depth'] = function () {
+          return Highcharts.chart('chart-depth', {
+            chart: { type: 'line', marginRight: 20, zooming: { type: 'x' } },
+            xAxis: { type: 'datetime' },
+            yAxis: { title: { text: 'Depth (m)' }, reversed: true },
+            tooltip: { shared: true, valueDecimals: 3, valueSuffix: ' m' },
+            series: [
+              {
+                name: 'Raw (no tilt correction)',
+                data: readings.map(function (r, i) {
+                  return [times[i], parseFloat((r.DistanceCM / 100).toFixed(3))]
+                }),
+                color: '#cbd5e1',
+                lineWidth: 1,
+                dashStyle: 'ShortDash',
+                marker: { enabled: false }
+              },
+              {
+                name: 'Tilt-Corrected Depth',
+                data: readings.map(function (r, i) {
+                  return [times[i], parseFloat((r.WaterDepthM || 0).toFixed(3))]
+                }),
+                color: '#3b82f6',
+                lineWidth: 2,
+                marker: { enabled: false }
+              }
+            ]
+          })
+        }
+    
+        var fishPts = []
+        var confData = readings.map(function (r, i) {
+          var c = parseFloat((r.DetectionConfidence || 0).toFixed(3))
+          if (r.FishDetected) {
+            fishPts.push({ x: times[i], y: c, marker: { fillColor: '#ef4444', radius: 5 } })
+          }
+          return [times[i], c]
+        })
+    
+        chartBuilders['confidence'] = function () {
+          return Highcharts.chart('chart-confidence', {
+            chart: { type: 'area', marginRight: 20, zooming: { type: 'x' } },
+            xAxis: { type: 'datetime' },
+            yAxis: {
+              title: { text: 'Confidence' },
+              min: 0,
+              max: 1,
+              plotLines: [
+                {
+                  value: 0.5,
+                  color: '#f97316',
+                  dashStyle: 'Dash',
+                  width: 1,
+                  label: { text: '0.5', style: { color: '#f97316', fontSize: '10px' } }
+                }
+              ]
+            },
+            tooltip: { valueDecimals: 3 },
+            series: [
+              {
+                name: 'Confidence',
+                data: confData,
+                color: '#3b82f6',
+                fillColor: {
+                  linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                  stops: [
+                    [0, 'rgba(59,130,246,0.25)'],
+                    [1, 'rgba(59,130,246,0)']
+                  ]
+                },
+                lineWidth: 2,
+                marker: { enabled: false }
+              },
+              {
+                name: 'Fish Detected',
+                type: 'scatter',
+                data: fishPts,
+                color: '#ef4444',
+                marker: { symbol: 'circle', radius: 5 }
+              }
+            ]
+          })
+        }
+    
+        chartBuilders['imu'] = function () {
+          return Highcharts.chart('chart-imu', {
+            chart: { type: 'line', marginRight: 20, zooming: { type: 'x' } },
+            xAxis: { type: 'datetime' },
+            yAxis: [
+              { title: { text: 'Tilt (°)', style: { color: '#f97316' } }, labels: { style: { color: '#f97316' } } },
+              { title: { text: 'Accel (g)', style: { color: '#8b5cf6' } }, labels: { style: { color: '#8b5cf6' } }, opposite: true }
+            ],
+            tooltip: { shared: true, valueDecimals: 2 },
+            series: [
+              {
+                name: 'Tilt Angle',
+                yAxis: 0,
+                data: readings.map(function (r, i) {
+                  return [times[i], parseFloat((r.TiltAngle || 0).toFixed(2))]
+                }),
+                color: '#f97316',
+                lineWidth: 2,
+                marker: { enabled: false },
+                zones: [{ value: 15, color: '#10b981' }, { value: 30, color: '#f97316' }, { color: '#ef4444' }]
+              },
+              {
+                name: 'Accel Magnitude',
+                yAxis: 1,
+                data: readings.map(function (r, i) {
+                  var ax = r.AccelX || 0,
+                    ay = r.AccelY || 0,
+                    az = r.AccelZ || 0
+                  return [times[i], parseFloat(Math.sqrt(ax * ax + ay * ay + az * az).toFixed(3))]
+                }),
+                color: '#8b5cf6',
+                lineWidth: 1,
+                dashStyle: 'ShortDash',
+                marker: { enabled: false }
+              }
+            ]
+          })
+        }
+    
+        var total = readings.length
+        var detected = readings.filter(function (r) {
+          return r.FishDetected
+        }).length
+        var gateValid = readings.filter(function (r) {
+          return (r.TiltAngle || 0) < 30 && (r.WaterDepthM || 0) > 0.1
+        }).length
+        var likelyFish = readings.filter(function (r) {
+          return r.FishDetected && (r.DetectionConfidence || 0) >= 0.6
+        }).length
+        var possible = readings.filter(function (r) {
+          return r.FishDetected && (r.DetectionConfidence || 0) < 0.6
+        }).length
+    
+        chartBuilders['summary'] = function () {
+          return Highcharts.chart('chart-summary', {
+            chart: { type: 'column', marginRight: 20, zooming: { type: 'x' } },
+            xAxis: {
+              type: 'category',
+              labels: { style: { fontSize: '11px' } }
+            },
+            yAxis: { title: { text: 'Count' }, allowDecimals: false },
+            tooltip: { valueSuffix: ' readings' },
+            series: [
+              {
+                name: 'Readings',
+                showInLegend: false,
+                colorByPoint: true,
+                data: [
+                  { name: 'Total', y: total, color: '#64748b' },
+                  { name: 'Gate Valid', y: gateValid, color: '#10b981' },
+                  { name: 'Gate Rejected', y: total - gateValid, color: '#f97316' },
+                  { name: 'Detected', y: detected, color: '#3b82f6' },
+                  { name: 'Likely Fish', y: likelyFish, color: '#ef4444' },
+                  { name: 'Possible', y: possible, color: '#eab308' }
+                ],
+                dataLabels: { enabled: true, style: { fontSize: '11px', fontWeight: '600' } }
+              }
+            ]
+          })
+        }
+    
+        showChart('depth')
+      }
+    
+      function updateStats(readings) {
+        var total = readings.length
+        var depthSum = 0
+        var depthN = 0
+        for (var i = 0; i < total; i++) {
+          var d = readings[i].WaterDepthM
+          if (typeof d === 'number' && d > 0) {
+            depthSum += d
+            depthN++
+          }
+        }
+        document.getElementById('stat-total').textContent = total
+        document.getElementById('stat-avg-depth').textContent = depthN > 0 ? (depthSum / depthN).toFixed(2) : '—'
+      }
+    
+      fetch('/api/v1/sessions/' + SESSION_ID + '/analysis')
+        .then(function (r) {
+          return r.json()
+        })
+        .then(function (json) {
+          var readings = json.data || []
+          var statusEl = document.getElementById('chart-status')
+          if (statusEl)
+            statusEl.textContent =
+              readings.length + ' readings analysed' + (json.source === 'stored' ? ' (ML offline — stored values)' : ' via ML')
+    
+          updateStats(readings)
+          initSessionMap(readings)
+    
+          if (readings.length > 0) {
+            initCharts(readings)
+          } else {
+            if (statusEl) statusEl.textContent = 'No readings in this session'
+            ;['chart-depth', 'chart-confidence', 'chart-imu', 'chart-summary'].forEach(function (id) {
+              var el = document.getElementById(id)
+              if (el) el.innerHTML = '<div style="height:300px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:14px">No data</div>'
+            })
+          }
+        })
+        .catch(function () {
+          var statusEl = document.getElementById('chart-status')
+          if (statusEl) statusEl.textContent = 'Failed to load readings'
+        })
+    
+      function openEndModal() {
+        var modal = document.getElementById('end-modal')
+        if (!modal) return
+        modal.classList.remove('hidden')
+        modal.classList.add('flex')
+      }
+    
+      function closeEndModal() {
+        var modal = document.getElementById('end-modal')
+        if (!modal) return
+        modal.classList.add('hidden')
+        modal.classList.remove('flex')
+        document.getElementById('catch-entries').innerHTML = '<div class="catch-row flex gap-2 mb-2">' + '<input type="text" placeholder="Fish type (e.g. Tilapia)" class="catch-type flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">' + '<input type="number" min="0" placeholder="Count" class="catch-count w-20 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">' + '<button onclick="removeCatchRow(this)" class="text-slate-400 hover:text-red-500 px-1"><i class="fas fa-times"></i></button>' + '</div>'
+      }
+    
+      function addCatchRow() {
+        var row = document.createElement('div')
+        row.className = 'catch-row flex gap-2 mb-2'
+        row.innerHTML = '<input type="text" placeholder="Fish type (e.g. Catfish)" class="catch-type flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">' + '<input type="number" min="0" placeholder="Count" class="catch-count w-20 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">' + '<button onclick="removeCatchRow(this)" class="text-slate-400 hover:text-red-500 px-1"><i class="fas fa-times"></i></button>'
+        document.getElementById('catch-entries').appendChild(row)
+      }
+    
+      function removeCatchRow(btn) {
+        if (document.querySelectorAll('.catch-row').length > 1) btn.closest('.catch-row').remove()
+      }
+    
+      function submitEndSession() {
+        var btn = document.getElementById('end-btn')
+        var errEl = document.getElementById('end-error')
+        errEl.classList.add('hidden')
+    
+        var catches = []
+        document.querySelectorAll('.catch-row').forEach(function (row) {
+          var type = row.querySelector('.catch-type').value.trim()
+          var count = parseInt(row.querySelector('.catch-count').value || '0', 10)
+          if (type && count > 0) catches.push({ fish_type: type, count: count })
+        })
+    
+        btn.textContent = 'Ending…'
+        btn.disabled = true
+    
+        fetch('/api/v1/sessions/' + SESSION_ID + '/end', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ catches: catches })
+        })
+          .then(function (r) {
+            if (!r.ok)
+              return r.json().then(function (d) {
+                throw d
+              })
+            window.location.reload()
+          })
+          .catch(function (d) {
+            errEl.textContent = (d && d.error) || 'Failed to end session'
+            errEl.classList.remove('hidden')
+            btn.textContent = 'End Session'
+            btn.disabled = false
+          })
+      }
+    
+      window.openEndModal = openEndModal
+      window.closeEndModal = closeEndModal
+      window.addCatchRow = addCatchRow
+      window.removeCatchRow = removeCatchRow
+      window.submitEndSession = submitEndSession
+    })()
+  </script>
+{% endblock %}
