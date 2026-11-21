@@ -1,0 +1,200 @@
+{% extends 'dashboard/layout.html' %}
+
+{% block title %}
+  Dashboard
+{% endblock %}
+
+{% block page_title %}
+  Dashboard
+{% endblock %}
+
+{% block head %}
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+{% endblock %}
+
+{% block content %}
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="stat-card stat-card-blue animate-fade-in">
+      <div class="stat-icon">
+        <i class="fas fa-broadcast-tower"></i>
+      </div>
+      <div class="stat-value">{{ stats.TotalReadings }}</div>
+      <div class="stat-label">Total Readings</div>
+      <div class="stat-sub">+{{ stats.ReadingsToday }} today</div>
+    </div>
+
+    <div class="stat-card stat-card-pink animate-fade-in" style="animation-delay:.07s">
+      <div class="stat-icon">
+        <i class="fas fa-anchor"></i>
+      </div>
+      <div class="stat-value">{{ active_session_count }}</div>
+      <div class="stat-label">Active Sessions</div>
+      <div class="stat-sub">fishing now</div>
+    </div>
+
+    <div class="stat-card stat-card-ocean animate-fade-in" style="animation-delay:.14s">
+      <div class="stat-icon">
+        <i class="fas fa-satellite-dish"></i>
+      </div>
+      <div class="stat-value">{{ dev_stats.OnlineDevices }}</div>
+      <div class="stat-label">Devices Online</div>
+      <div class="stat-sub">{{ dev_stats.TotalDevices }} total</div>
+    </div>
+
+    <div class="stat-card stat-card-warn animate-fade-in" style="animation-delay:.21s">
+      <div class="stat-icon">
+        <i class="fas fa-exclamation-triangle"></i>
+      </div>
+      <div class="stat-value">{{ unacked_count }}</div>
+      <div class="stat-label">Unread Alerts</div>
+      <div class="stat-sub">Needs attention</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+    <div class="lg:col-span-2 card">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="section-title">Signal Activity by Hour</h3>
+        <span class="text-xs text-slate-400">Last 30 days</span>
+      </div>
+      <div id="trend-chart" class="h-48"></div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title mb-4">Device Status</h3>
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-sm text-slate-600">Online</span>
+          </div>
+          <span class="font-semibold text-slate-800">{{ dev_stats.OnlineDevices }}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-300"></span>
+            <span class="text-sm text-slate-600">Offline</span>
+          </div>
+          <span class="font-semibold text-slate-800">{{ dev_stats.OfflineDevices }}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-200"></span>
+            <span class="text-sm text-slate-600">Total</span>
+          </div>
+          <span class="font-semibold text-slate-800">{{ dev_stats.TotalDevices }}</span>
+        </div>
+      </div>
+      <div class="mt-4 pt-4 border-t border-slate-100">
+        <a href="/admin/devices" class="text-xs text-blue-600 hover:text-blue-700 font-medium">Manage devices <i class="fas fa-arrow-right ml-1"></i></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="card">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="section-title">Recent Readings</h3>
+        <a href="/admin/readings" class="text-xs text-blue-600 hover:text-blue-700 font-medium">View all</a>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Device</th>
+              <th>Depth (m)</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in recent_readings %}
+              <tr>
+                <td class="font-mono text-xs">{{ r.DeviceID }}</td>
+                <td>{{ r.WaterDepthM|floatformat:1 }}</td>
+                <td class="text-slate-400 text-xs">{{ r.RecordedAt|elapsed }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="section-title">Recent Events</h3>
+        <a href="/admin/events" class="text-xs text-blue-600 hover:text-blue-700 font-medium">View all</a>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Device</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in recent_events %}
+              <tr>
+                <td class="text-xs font-medium text-slate-700">{{ e.EventType }}</td>
+                <td class="font-mono text-xs">{{ e.DeviceID }}</td>
+                <td class="text-slate-400 text-xs">{{ e.OccurredAt|elapsed }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    ;(function () {
+      fetch('/api/v1/analytics/trends?days=30')
+        .then((r) => r.json())
+        .then((data) => {
+          if (!Array.isArray(data) || data.length === 0) return
+          Highcharts.chart('trend-chart', {
+            chart: { type: 'areaspline', backgroundColor: 'transparent', margin: [10, 10, 30, 40], zooming: { type: 'x' } },
+            title: { text: '' },
+            legend: { enabled: false },
+            xAxis: {
+              categories: data.map((d) => d.hour + ':00'),
+              labels: { style: { fontSize: '10px', color: '#94a3b8' } },
+              lineColor: '#e2e8f0',
+              tickColor: 'transparent'
+            },
+            yAxis: {
+              title: { text: '' },
+              gridLineColor: '#f1f5f9',
+              labels: { style: { fontSize: '10px', color: '#94a3b8' } }
+            },
+            tooltip: {
+              formatter: function () {
+                return '<b>' + this.x + '</b><br/>Signal rate: ' + (this.y * 100).toFixed(1) + '%'
+              }
+            },
+            series: [
+              {
+                name: 'Signal Rate',
+                data: data.map((d) => d.detection_rate),
+                color: '#3b82f6',
+                fillColor: {
+                  linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                  stops: [
+                    [0, 'rgba(59,130,246,0.3)'],
+                    [1, 'rgba(59,130,246,0.01)']
+                  ]
+                },
+                lineWidth: 2,
+                marker: { enabled: false }
+              }
+            ],
+            credits: { enabled: false }
+          })
+        })
+        .catch(() => {})
+    })()
+  </script>
+{% endblock %}

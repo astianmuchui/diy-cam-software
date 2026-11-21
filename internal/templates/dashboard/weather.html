@@ -1,0 +1,344 @@
+{% extends "dashboard/layout.html" %}
+
+{% block title %}Weather{% endblock title %}
+
+{% block page_title %}Weather Insights{% endblock page_title %}
+
+{% block head %}
+<script src="https://code.highcharts.com/highcharts.js"></script>
+{% endblock head %}
+
+{% block content %}
+
+<div class="card mb-5 animate-fade-in">
+    <h3 class="section-title mb-3">Query Location</h3>
+    <div class="flex flex-wrap gap-3 items-end">
+        <div class="flex-1 min-w-0" style="max-width:9rem">
+            <label class="form-label">Latitude</label>
+            <input id="lat-input" type="number" step="0.0001" value="-0.0917"
+                class="form-input" placeholder="-0.0917">
+        </div>
+        <div class="flex-1 min-w-0" style="max-width:9rem">
+            <label class="form-label">Longitude</label>
+            <input id="lon-input" type="number" step="0.0001" value="34.7680"
+                class="form-input" placeholder="34.7680">
+        </div>
+        <button id="fetch-weather-btn" class="btn-primary">
+            <i class="fas fa-sync-alt mr-1"></i> Refresh
+        </button>
+        <button id="geoloc-btn" class="btn-secondary" title="Use current location">
+            <i class="fas fa-map-marker-alt mr-1"></i> My Location
+        </button>
+        <div id="weather-status" class="text-xs text-slate-500 flex items-center gap-1.5 w-full sm:w-auto"></div>
+    </div>
+</div>
+
+<script>
+document.getElementById('geoloc-btn').addEventListener('click', function() {
+    if (navigator.geolocation) {
+        this.disabled = true;
+        this.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Locating…';
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                document.getElementById('lat-input').value = position.coords.latitude.toFixed(4);
+                document.getElementById('lon-input').value = position.coords.longitude.toFixed(4);
+                document.getElementById('geoloc-btn').disabled = false;
+                document.getElementById('geoloc-btn').innerHTML = '<i class="fas fa-map-marker-alt mr-1"></i> Current Location';
+                loadAll();
+            },
+            function() {
+                alert('Unable to retrieve your location');
+                document.getElementById('geoloc-btn').disabled = false;
+                document.getElementById('geoloc-btn').innerHTML = '<i class="fas fa-map-marker-alt mr-1"></i> Current Location';
+            }
+        );
+    } else {
+        alert('Geolocation is not supported by your browser');
+    }
+});
+</script>
+
+<div id="weather-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="col-span-full text-center text-slate-400 py-10">
+        <i class="fas fa-spinner fa-spin text-3xl text-slate-300 mb-3 block"></i>
+        Loading weather data…
+    </div>
+</div>
+
+<div id="charts-wrapper" class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 hidden">
+
+    <div class="card animate-fade-in">
+        <h3 class="section-title mb-4">Fishing Score — Weather-Based</h3>
+        <div id="score-chart" class="h-48"></div>
+    </div>
+
+    <div class="card animate-fade-in">
+        <h3 class="section-title mb-4">Sensor Confidence — IoT Data</h3>
+        <div id="confidence-chart" class="h-48"></div>
+    </div>
+
+</div>
+
+<div id="iot-table-wrapper" class="card hidden animate-fade-in">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="section-title">Daily IoT Detection Stats</h3>
+        <span class="text-xs text-slate-400">Last 14 days from sensor readings</span>
+    </div>
+    <div class="table-scroll">
+        <table class="data-table" id="iot-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Readings</th>
+                    <th>Detections</th>
+                    <th>Detection Rate</th>
+                    <th>Avg Fish Count</th>
+                    <th>Avg Depth (m)</th>
+                    <th>Sensor Confidence</th>
+                </tr>
+            </thead>
+            <tbody id="iot-table-body"></tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock content %}
+
+{% block scripts %}
+<script>
+
+let weatherData = [];
+let iotData     = [];
+let iotByDate   = {};
+
+const scoreColor = s => s >= 9 ? '#10b981' : s >= 7 ? '#3b82f6' : s >= 5 ? '#f59e0b' : '#ef4444';
+const confColor  = c => c >= 0.75 ? '#10b981' : c >= 0.5 ? '#3b82f6' : c >= 0.25 ? '#f59e0b' : '#94a3b8';
+const weatherIcon = rain => rain > 20 ? '🌧️' : rain > 5 ? '🌦️' : '☀️';
+
+function fmtDate(yyyymmdd) {
+    return yyyymmdd.slice(0,4) + '-' + yyyymmdd.slice(4,6) + '-' + yyyymmdd.slice(6,8);
+}
+
+function confLabel(c) {
+    if (c >= 0.75) return 'Very High';
+    if (c >= 0.5)  return 'High';
+    if (c >= 0.25) return 'Moderate';
+    if (c >  0)    return 'Low';
+    return '—';
+}
+
+function combinedConf(fishingScore, sensorConf) {
+    return (fishingScore / 10) * 0.40 + sensorConf * 0.60;
+}
+
+function setStatus(msg, isError) {
+    const el = document.getElementById('weather-status');
+    el.innerHTML = isError
+        ? `<i class="fas fa-exclamation-circle text-red-400"></i><span class="text-red-500">${msg}</span>`
+        : `<i class="fas fa-check-circle text-emerald-400"></i><span>${msg}</span>`;
+}
+
+function renderCards() {
+    const cardsEl = document.getElementById('weather-cards');
+
+    if (weatherData.length === 0) {
+        cardsEl.innerHTML = `
+            <div class="col-span-full text-center text-slate-400 py-10">
+                <i class="fas fa-cloud-slash text-4xl text-slate-300 mb-3 block"></i>
+                No weather data available for this location and period.
+                <div class="text-xs mt-1 text-slate-400">NASA POWER data may not be published yet for recent dates.</div>
+            </div>`;
+        return;
+    }
+
+    cardsEl.innerHTML = weatherData.map(d => {
+        const iot     = iotByDate[d.date] || null;
+        const sConf   = iot ? iot.avg_confidence : 0;
+        const cConf   = iot ? combinedConf(d.fishing_score, sConf) : null;
+        const hasIot  = iot && iot.total_readings > 0;
+
+        const iotSection = hasIot ? `
+            <div class="mt-3 pt-3 border-t border-slate-100">
+                <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2">Sensor Data</div>
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-500">Detection rate</span>
+                        <span class="font-semibold" style="color:${confColor(iot.detection_rate)}">${(iot.detection_rate * 100).toFixed(0)}%</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-500">Avg fish count</span>
+                        <span class="font-medium">${iot.avg_fish_count.toFixed(1)}</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-500">Avg depth</span>
+                        <span class="font-medium">${iot.avg_depth_m.toFixed(1)} m</span>
+                    </div>
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-500">Sensor confidence</span>
+                        <span class="font-semibold" style="color:${confColor(sConf)}">${confLabel(sConf)}</span>
+                    </div>
+                </div>
+                ${cConf !== null ? `
+                <div class="mt-2">
+                    <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1">Combined Outlook</div>
+                    <div class="flex items-center gap-2">
+                        <div class="flex-1 bg-slate-100 rounded-full h-2">
+                            <div class="h-2 rounded-full transition-all duration-500"
+                                 style="width:${(cConf*100).toFixed(0)}%;background:${confColor(cConf)}"></div>
+                        </div>
+                        <span class="text-xs font-bold" style="color:${confColor(cConf)}">${(cConf*100).toFixed(0)}%</span>
+                    </div>
+                </div>` : ''}
+            </div>` : `
+            <div class="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400 text-center">
+                No IoT readings for this date
+            </div>`;
+
+        return `
+        <div class="card hover-lift animate-fade-in">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-semibold text-slate-500">${fmtDate(d.date)}</span>
+                <span class="text-2xl">${weatherIcon(d.rainfall_mm)}</span>
+            </div>
+            <div class="space-y-1.5 mb-3">
+                <div class="flex justify-between text-xs"><span class="text-slate-500">Temp</span><span class="font-medium">${d.temperature_c.toFixed(1)} °C</span></div>
+                <div class="flex justify-between text-xs"><span class="text-slate-500">Rainfall</span><span class="font-medium">${d.rainfall_mm.toFixed(1)} mm</span></div>
+                <div class="flex justify-between text-xs"><span class="text-slate-500">Wind</span><span class="font-medium">${d.wind_speed_ms.toFixed(1)} m/s</span></div>
+                <div class="flex justify-between text-xs"><span class="text-slate-500">Solar</span><span class="font-medium">${d.solar_radiation.toFixed(1)} W/m²</span></div>
+            </div>
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center font-extrabold text-white text-sm shadow flex-shrink-0"
+                     style="background:${scoreColor(d.fishing_score)}">${d.fishing_score}</div>
+                <span class="text-xs text-slate-600 leading-tight">${d.recommendation}</span>
+            </div>
+            ${iotSection}
+        </div>`;
+    }).join('');
+}
+
+function renderCharts() {
+    const wrapper = document.getElementById('charts-wrapper');
+    wrapper.classList.remove('hidden');
+
+    Highcharts.chart('score-chart', {
+        chart: { type: 'column', backgroundColor: 'transparent', margin: [10, 10, 30, 35] },
+        title: { text: '' },
+        legend: { enabled: false },
+        xAxis: {
+            categories: weatherData.map(d => d.date.slice(4,6)+'/'+d.date.slice(6,8)),
+            labels: { style: { fontSize: '10px', color: '#94a3b8' } },
+            lineColor: '#e2e8f0', tickColor: 'transparent',
+        },
+        yAxis: { title: { text: '' }, min: 0, max: 10, gridLineColor: '#f1f5f9', labels: { style: { fontSize: '10px', color: '#94a3b8' } } },
+        tooltip: { formatter: function() { return `<b>${this.x}</b><br/>Fishing score: ${this.y}/10`; } },
+        series: [{ name: 'Fishing Score', data: weatherData.map(d => ({ y: d.fishing_score, color: scoreColor(d.fishing_score) })), borderRadius: 4 }],
+        credits: { enabled: false },
+    });
+
+    const confPoints = weatherData.map(d => {
+        const iot = iotByDate[d.date];
+        return iot ? parseFloat((iot.avg_confidence * 100).toFixed(1)) : null;
+    });
+
+    Highcharts.chart('confidence-chart', {
+        chart: { type: 'areaspline', backgroundColor: 'transparent', margin: [10, 10, 30, 40] },
+        title: { text: '' },
+        legend: { enabled: false },
+        xAxis: {
+            categories: weatherData.map(d => d.date.slice(4,6)+'/'+d.date.slice(6,8)),
+            labels: { style: { fontSize: '10px', color: '#94a3b8' } },
+            lineColor: '#e2e8f0', tickColor: 'transparent',
+        },
+        yAxis: {
+            title: { text: '' }, min: 0, max: 100,
+            gridLineColor: '#f1f5f9',
+            labels: { style: { fontSize: '10px', color: '#94a3b8' }, format: '{value}%' },
+        },
+        tooltip: { formatter: function() { return `<b>${this.x}</b><br/>Sensor confidence: ${this.y !== null ? this.y + '%' : 'no data'}`; } },
+        series: [{
+            name: 'Sensor Confidence',
+            data: confPoints,
+            color: '#db2777',
+            fillColor: { linearGradient: { x1:0, y1:0, x2:0, y2:1 }, stops: [[0,'rgba(219,39,119,0.25)'],[1,'rgba(219,39,119,0.01)']] },
+            lineWidth: 2,
+            marker: { enabled: true, radius: 3 },
+            connectNulls: false,
+        }],
+        credits: { enabled: false },
+    });
+}
+
+function renderIotTable() {
+    if (iotData.length === 0) return;
+
+    document.getElementById('iot-table-wrapper').classList.remove('hidden');
+    const tbody = document.getElementById('iot-table-body');
+
+    tbody.innerHTML = iotData.map(r => `
+        <tr>
+            <td class="font-mono text-xs">${fmtDate(r.date)}</td>
+            <td>${r.total_readings}</td>
+            <td>${r.fish_detections}</td>
+            <td>
+                <div class="flex items-center gap-1.5">
+                    <div class="w-16 bg-slate-100 rounded-full h-1.5">
+                        <div class="h-1.5 rounded-full" style="width:${(r.detection_rate*100).toFixed(0)}%;background:${confColor(r.detection_rate)}"></div>
+                    </div>
+                    <span class="text-xs font-semibold" style="color:${confColor(r.detection_rate)}">${(r.detection_rate*100).toFixed(1)}%</span>
+                </div>
+            </td>
+            <td>${r.avg_fish_count.toFixed(1)}</td>
+            <td>${r.avg_depth_m.toFixed(2)}</td>
+            <td>
+                <span class="badge" style="background:${confColor(r.avg_confidence)}22;color:${confColor(r.avg_confidence)}">
+                    ${confLabel(r.avg_confidence)} (${(r.avg_confidence*100).toFixed(0)}%)
+                </span>
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function loadAll() {
+    const lat = document.getElementById('lat-input').value;
+    const lon = document.getElementById('lon-input').value;
+    const cardsEl = document.getElementById('weather-cards');
+
+    cardsEl.innerHTML = `<div class="col-span-full text-center text-slate-400 py-10"><i class="fas fa-spinner fa-spin text-2xl"></i></div>`;
+    document.getElementById('weather-status').innerHTML = '';
+    document.getElementById('charts-wrapper').classList.add('hidden');
+    document.getElementById('iot-table-wrapper').classList.add('hidden');
+
+    const [weatherRes, iotRes] = await Promise.allSettled([
+        fetch(`/api/v1/weather/insights?lat=${lat}&lon=${lon}`),
+        fetch(`/api/v1/analytics/daily-stats?days=14`),
+    ]);
+
+    if (weatherRes.status === 'fulfilled' && weatherRes.value.ok) {
+        weatherData = await weatherRes.value.json();
+    } else {
+        weatherData = [];
+        setStatus('Weather data unavailable — check server logs', true);
+    }
+
+    if (iotRes.status === 'fulfilled' && iotRes.value.ok) {
+        iotData = await iotRes.value.json();
+    } else {
+        iotData = [];
+    }
+    iotByDate = {};
+    iotData.forEach(r => { iotByDate[r.date] = r; });
+
+    renderCards();
+
+    if (weatherData.length > 0) {
+        renderCharts();
+        setStatus(`${weatherData.length} day(s) loaded`, false);
+    }
+
+    renderIotTable();
+}
+
+document.getElementById('fetch-weather-btn').addEventListener('click', loadAll);
+loadAll();
+</script>
+{% endblock scripts %}

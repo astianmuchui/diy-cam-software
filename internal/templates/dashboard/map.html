@@ -1,0 +1,60 @@
+{% extends "dashboard/layout.html" %}
+
+{% block title %}Map{% endblock title %}
+
+{% block page_title %}Sensor Map{% endblock page_title %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  #map { height: calc(100vh - 220px); min-height: 320px; border-radius: 12px; }
+  @media (min-width: 1024px) { #map { height: calc(100vh - 180px); min-height: 500px; } }
+  .leaflet-control-layers { border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.1); }
+</style>
+{% endblock head %}
+
+{% block content %}
+
+<div class="flex flex-wrap items-center gap-2 mb-4 animate-fade-in">
+    <div class="flex-1 min-w-0 w-full sm:w-auto">
+        <div class="relative">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+            <input id="geocode-input" type="text" placeholder="Search location…"
+                class="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+        </div>
+    </div>
+    <select id="days-filter" class="border border-slate-200 rounded-lg text-sm px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <option value="7">Last 7 days</option>
+        <option value="14">Last 14 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option>
+    </select>
+    <button id="reload-btn" class="btn-primary text-sm">
+        <i class="fas fa-sync-alt mr-1"></i> Refresh
+    </button>
+    <div id="map-status" class="text-xs text-slate-500 w-full sm:w-auto"></div>
+</div>
+
+<div class="flex flex-wrap gap-4 mb-3 text-xs text-slate-600 animate-fade-in">
+    <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-500 opacity-80"></span> Low density</div>
+    <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-indigo-500 opacity-80"></span> Medium density</div>
+    <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-pink-500 opacity-80"></span> High density</div>
+    <div class="flex items-center gap-1.5">
+        <span class="w-3 h-3 rounded border-2 border-blue-500 border-dashed bg-blue-500/10"></span> Session area
+    </div>
+    <div class="flex items-center gap-1.5">
+        <span class="w-3 h-3 rounded border-2 border-blue-500 bg-blue-500/15"></span> Active session
+    </div>
+</div>
+
+<div id="map" class="animate-fade-in shadow-lg border border-slate-200"></div>
+
+{% endblock content %}
+
+{% block scripts %}
+<script src="/assets/js/map.js"></script>
+<script>
+window.initMap('{{ opencage_key }}');
+</script>
+{% endblock scripts %}

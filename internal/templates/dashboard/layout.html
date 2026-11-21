@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      {% block title %}
+        SonarCore
+      {% endblock %}| SonarCore
+    </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" />
+    <link rel="stylesheet" href="/assets/css/style.css" />
+    {% block head %}
+    {% endblock %}
+  </head>
+  <body class="bg-slate-50 font-sans">
+    <div id="sidebar-overlay" onclick="closeSidebar()" class="fixed inset-0 bg-black/40 z-30 hidden lg:hidden"></div>
+
+    <aside id="sidebar" class="fixed top-0 left-0 z-40 w-64 lg:w-52 h-screen sidebar-bg flex flex-col -translate-x-full lg:translate-x-0 transition-transform duration-300">
+      <div class="flex items-center gap-3 px-4 py-5 border-b border-slate-700/60">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-pink-500 flex items-center justify-center shadow flex-shrink-0">
+          <i class="fas fa-water text-white text-sm"></i>
+        </div>
+        <div>
+          <div class="text-white font-bold text-sm leading-tight">SonarCore</div>
+          <div class="text-slate-400 text-xs">Fish Detection</div>
+        </div>
+
+        <button onclick="closeSidebar()" class="ml-auto lg:hidden text-slate-400 hover:text-white p-1"><i class="fas fa-times"></i></button>
+      </div>
+
+      <nav class="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <a href="/admin/dashboard" onclick="closeSidebar()" class="nav-item {% if active == 'dashboard' %}nav-item-active{% endif %}">
+          <i class="fas fa-tachometer-alt nav-icon"></i>
+          <span>Dashboard</span>
+        </a>
+
+        <a href="/admin/devices" onclick="closeSidebar()" class="nav-item {% if active == 'devices' %}nav-item-active{% endif %}">
+          <i class="fas fa-satellite-dish nav-icon"></i>
+          <span>Devices</span>
+        </a>
+
+        <a href="/admin/readings" onclick="closeSidebar()" class="nav-item {% if active == 'readings' %}nav-item-active{% endif %}">
+          <i class="fas fa-chart-line nav-icon"></i>
+          <span>Readings</span>
+        </a>
+
+        <a href="/admin/events" onclick="closeSidebar()" class="nav-item {% if active == 'events' %}nav-item-active{% endif %}">
+          <i class="fas fa-bell nav-icon"></i>
+          <span>Events</span>
+          {% if unacked_count > 0 %}
+            <span class="ml-auto text-xs bg-pink-500 text-white rounded-full px-1.5 py-0.5 font-bold">{{ unacked_count }}</span>
+          {% endif %}
+        </a>
+
+        <a href="/admin/map" onclick="closeSidebar()" class="nav-item {% if active == 'map' %}nav-item-active{% endif %}">
+          <i class="fas fa-map-marked-alt nav-icon"></i>
+          <span>Map</span>
+        </a>
+
+        <a href="/admin/weather" onclick="closeSidebar()" class="nav-item {% if active == 'weather' %}nav-item-active{% endif %}">
+          <i class="fas fa-cloud-sun nav-icon"></i>
+          <span>Weather</span>
+        </a>
+
+        <a href="/admin/insights" onclick="closeSidebar()" class="nav-item {% if active == 'insights' %}nav-item-active{% endif %}">
+          <i class="fas fa-lightbulb nav-icon"></i>
+          <span>Insights</span>
+        </a>
+
+        <a href="/admin/sessions" onclick="closeSidebar()" class="nav-item {% if active == 'sessions' %}nav-item-active{% endif %}">
+          <i class="fas fa-anchor nav-icon"></i>
+          <span>Sessions</span>
+        </a>
+      </nav>
+
+      <div class="px-4 py-4 border-t border-slate-700/60">
+        <div class="text-slate-300 text-xs font-medium truncate mb-2">{{ user_name }}</div>
+        <a href="/auth/logout" class="flex items-center gap-2 text-slate-400 hover:text-red-400 text-xs transition-colors duration-150">
+          <i class="fas fa-sign-out-alt"></i>
+          <span>Sign Out</span>
+        </a>
+      </div>
+    </aside>
+
+    <div class="lg:ml-52 flex flex-col min-h-screen">
+      <header class="bg-white border-b border-slate-200 px-4 lg:px-6 py-3 lg:py-4 flex items-center justify-between sticky top-0 z-20">
+        <div class="flex items-center gap-3 min-w-0">
+          <button id="sidebar-toggle" onclick="openSidebar()" class="lg:hidden flex-shrink-0 text-slate-500 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"><i class="fas fa-bars text-base"></i></button>
+          <h1 class="text-base lg:text-lg font-semibold text-slate-800 truncate">
+            {% block page_title %}
+            {% endblock %}
+          </h1>
+        </div>
+        <div class="flex items-center gap-3 flex-shrink-0">
+          {% if unacked_count > 0 %}
+            <a href="/admin/events" class="relative">
+              <i class="fas fa-bell text-slate-400 hover:text-pink-500 transition-colors"></i>
+              <span class="absolute -top-1 -right-1 w-3.5 h-3.5 bg-pink-500 rounded-full text-white text-[8px] flex items-center justify-center font-bold">{{ unacked_count }}</span>
+            </a>
+          {% endif %}
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold shadow">
+              <i class="fas fa-user"></i>
+            </div>
+            <span class="text-sm text-slate-600 font-medium hidden md:block">{{ user_name }}</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="flex-1 p-4 lg:p-6 min-w-0 overflow-x-hidden">
+        {% block content %}
+        {% endblock %}
+      </main>
+
+      <footer class="px-4 lg:px-6 py-3 text-center text-xs text-slate-400 border-t border-slate-200">SonarCore &copy; 2026 &mdash; JKUAT</footer>
+    </div>
+
+    <script>
+      function openSidebar() {
+        document.getElementById('sidebar').classList.add('sidebar-open')
+        document.getElementById('sidebar-overlay').classList.remove('hidden')
+        document.body.style.overflow = 'hidden'
+      }
+      function closeSidebar() {
+        document.getElementById('sidebar').classList.remove('sidebar-open')
+        document.getElementById('sidebar-overlay').classList.add('hidden')
+        document.body.style.overflow = ''
+      }
+      window.addEventListener('resize', function () {
+        if (window.innerWidth >= 1024) closeSidebar()
+      })
+    </script>
+
+    {% block scripts %}
+    {% endblock %}
+  </body>
+</html>
